@@ -1,0 +1,69 @@
+import numpy as np
+from keras.models import Sequential
+from keras.layers import Dense, LSTM
+import difflib
+
+def content_deal(content):  # 语料预处理，进行断句，去除一些广告和无意义内容
+    ad = ['本书来自www.cr173.com免费txt小说下载站\n更多更新免费电子书请关注www.cr173.com', '----〖新语丝电子文库(www.xys.org)〗', '新语丝电子文库',
+          '\u3000', '\n', '。', '？', '！', '，', '；', '：', '、', '《', '》', '“', '”', '‘', '’', '［', '］', '....', '......',
+          '『', '』', '（', '）', '…', '「', '」', '\ue41b', '＜', '＞', '+', '\x1a', '\ue42b']
+    for a in ad:
+        content = content.replace(a, '')
+    return content
+
+# 读取小说数据
+with open("C:\\Users\\feng\\Desktop\\NPLwork\\corpus\\test.txt", encoding='utf-8') as file:
+    text = file.read()
+text = content_deal(text)
+# 为每个字符分配一个编号
+chars = sorted(list(set(text)))
+char_to_int = dict((c, i) for i, c in enumerate(chars))
+int_to_char = dict((i, c) for i, c in enumerate(chars))
+
+# 定义参数
+SEQ_LENGTH = 20
+STEP = 1
+# 将小说数据转换为数字序列
+data = []
+for i in range(0, len(text) - SEQ_LENGTH, STEP):
+    seq_in = text[i:i + SEQ_LENGTH]
+    seq_out = text[i + SEQ_LENGTH]
+    data.append((seq_in, seq_out))
+
+# 准备输入和输出
+X = np.zeros((len(data), SEQ_LENGTH, len(chars)), dtype=np.bool)
+y = np.zeros((len(data), len(chars)), dtype=np.bool)
+for i, (seq_in, seq_out) in enumerate(data):
+    for j, char in enumerate(seq_in):
+        X[i, j, char_to_int[char]] = 1
+    y[i, char_to_int[seq_out]] = 1
+
+# 训练LSTM模型
+model = Sequential()
+model.add(LSTM(128, input_shape=(SEQ_LENGTH, len(chars))))
+model.add(Dense(len(chars), activation='softmax'))
+model.compile(loss='categorical_crossentropy', optimizer='adam')
+
+model.fit(X, y, batch_size=128, epochs=300)
+
+# 使用模型生成新的小说段落
+start_index = np.random.randint(0, len(text) - SEQ_LENGTH)
+generated = ''
+sentence = text[start_index:start_index + SEQ_LENGTH]
+generated += sentence
+for i in range(800):
+    x = np.zeros((1, SEQ_LENGTH, len(chars)))
+    for j, char in enumerate(sentence):
+        x[0, j, char_to_int[char]] = 1
+    preds = model.predict(x, verbose=0)[0]
+    next_index = np.argmax(preds)
+    next_char = int_to_char[next_index]
+    generated += next_char
+    sentence = sentence[1:] + next_char
+print(generated)
+
+# 创建 SequenceMatcher 对象
+s = difflib.SequenceMatcher(lambda x: x == " ", text, generated)
+# 计算相似度
+similarity_ratio = s.ratio()
+print(similarity_ratio)
